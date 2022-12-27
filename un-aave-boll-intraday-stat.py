@@ -16,7 +16,7 @@ import string
 base_url = "https://api.binance.com/api/v3/"
 kline_req_url = base_url+"klines"
 itv='1h'
-instruments=['MATIC']
+instruments=['ETH']
 
 ONE_DAY = 86400
 now = int(datetime.now().timestamp())
@@ -388,9 +388,9 @@ def backtest_boll_longshort(ins):
             if(entry_price_lower_long<0.001):
                 if(float(kl[3])<=priceRank['LL']):
                     entry_price_upper_long = priceRank['HH']
-                    entry_price_lower_long = priceRank['LL']*0.5
+                    entry_price_lower_long = priceRank['LL'] * 0.5
                     entry_time = k
-                    print('+++++++ new long entry price' + str(entry_price_lower_long) + ' entry time ' + str(kl[0]))
+                    print('+++++++ new long entry price '+ kl[2] + ' sl:'+ str(entry_price_lower_long) + ' entry time ' + str(kl[0]))
         
         
             if(k>entry_time):
@@ -404,7 +404,7 @@ def backtest_boll_longshort(ins):
             
                 # lose money
                 if(float(kl[2])>=entry_price_upper_short):
-                    print( '            short lost , hit stoploss ' + str(entry_price_upper_short) + ' curr price:'+ str(kl[2]) + '@' +str(kl[0]) )
+                    print( 'xxx            short lost , hit stoploss ' + str(entry_price_upper_short) + ' curr price:'+ str(kl[2]) + '@' +str(kl[0]) )
                     initCapital *= punishment
                     punish_cnt+=1
                     entry_price_upper_short = 99999999
@@ -423,14 +423,14 @@ def backtest_boll_longshort(ins):
                 # gain money
                 if(entry_price_lower_long>0):
                     if(float(kl[2])>=entry_price_upper_long):
-                        print( ' ￥ long win , hit price upper ' + str(entry_price_lower_long) + ' curr high:'+str(kl[2]) + ' exit time' +str(kl[0]) ) 
+                        print( ' ￥ long win , hit price upper ' + str(entry_price_upper_long) + ' curr high:'+str(kl[2]) + ' exit time' +str(kl[0]) ) 
                         initCapital /= punishment
                         entry_price_upper_long = 0
                         entry_price_lower_long = 0
             
                 # lose money
                 if(float(kl[3])<=entry_price_lower_long):
-                    print( '         long lost , hit stoploss ' + str(entry_price_lower_long) + ' curr low:'+str(kl[3]) + '@' +str(kl[0]) )
+                    print( 'xxx         long lost , hit stoploss ' + str(entry_price_lower_long) + ' curr low:'+str(kl[3]) + '@' +str(kl[0]) )
                     initCapital *= punishment
                     punish_cnt+=1
                     entry_price_upper_long = 0
