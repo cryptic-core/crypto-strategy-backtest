@@ -420,7 +420,8 @@ def backtest_longshort_IL_change(ins):
     entry_price_long = 0
     entry_amt0_long = 0
     entry_amt1_long = 0
-    
+    deltaX_long=0
+    deltaY_long=0
     
     entry_price_upper_short = 0
     entry_price_lower_short = 0
@@ -477,47 +478,46 @@ def backtest_longshort_IL_change(ins):
                     deltaX_short,deltaY_short = getTokenAmountsFromDepositAmounts(entry_price_short, entry_price_lower_short, entry_price_upper_short, entry_price_short, 1, mining_usd_amt)
                     
                     entry_time = k
-                    print('------- new short entry :' + kl[2] +' sl:'+ str(entry_price_upper_short) + ' (before liquidation) entry time ' + str(kl[0]))
+                    print('------- new short entry :' + kl[2] +' sl:'+ str(entry_price_upper_short)  +' fund:'+ str(initCapital) + ' entry time ' + str(kl[0]))
             
             # long entry
             #print('price test '+str(float(kl[3])) + ' ' + str(priceRank['ML']))
             if(entry_price_lower_long<0.001):
                 if(float(kl[3])<=priceRank['LL']):
                     entry_price_upper_long = priceRank['HH']
-                    entry_price_lower_long = priceRank['LL'] * 0.5
+                    entry_price_lower_long = priceRank['LL'] * 0.2
                     entry_price_long = priceRank['LL']
                     entry_time = k
-                    print('+++++++ new long entry price '+ kl[2] + ' sl:'+ str(entry_price_lower_long) + ' entry time ' + str(kl[0]))
+                    deltaX_long,deltaY_long = getTokenAmountsFromDepositAmounts(entry_price_long, entry_price_lower_long, entry_price_upper_long, entry_price_long, 1, initCapital)
+                    
+                    print('+++++++ new long entry price '+ kl[2] + ' sl:'+ str(entry_price_lower_long)  +' fund:'+ str(initCapital) + ' entry time ' + str(kl[0]))
         
         
             if(k>entry_time):
                 # gain money
                 if(entry_price_lower_short>0):
                     if(float(kl[3])<=entry_price_lower_short):
-                        print(  '￥ short win , hit price lower ' + str(entry_price_lower_short) + ' lower price:'+str(kl[3]) + ' exit time' +str(kl[0]) ) 
                         
                         P = entry_price_lower_short
                         # 當前經過 IL 計算之後部位剩餘顆數
                         P_clamp = min(max(P,entry_price_lower_short),entry_price_upper_short)
                         amt1,amt2 = getILPriceChange(entry_price_short,P_clamp,entry_price_upper_short,entry_price_lower_short,deltaX_short,deltaY_short)
                         curamt = amt1+amt2/P + longAmt
-                        initCapital = initCapital - (shortAmt - curamt)*P                        
-                        
+                        initCapital = initCapital - (shortAmt - curamt)*P
+                        print(  '￥ short win , hit price lower ' + str(entry_price_lower_short) + ' lower price:'+str(kl[3]) +' fund:'+ str(initCapital) +' exit time' +str(kl[0]) )
                         
                         entry_price_upper_short = 99999999
                         entry_price_lower_short = 0
             
                     # lose money
                     if(float(kl[2])>=entry_price_upper_short):
-                        print( 'xxx            short lost , hit stoploss ' + str(entry_price_upper_short) + ' curr price:'+ str(kl[2]) + '@' +str(kl[0]) )
-                        
                         P = entry_price_upper_short
                         # 當前經過 IL 計算之後部位剩餘顆數
                         P_clamp = min(max(P,entry_price_lower_short),entry_price_upper_short)
                         amt1,amt2 = getILPriceChange(entry_price_short,P_clamp,entry_price_upper_short,entry_price_lower_short,deltaX_short,deltaY_short)
                         curamt = amt1+amt2/P + longAmt
-                        initCapital = initCapital - (shortAmt - curamt)*P                        
-                        
+                        initCapital = initCapital - (shortAmt - curamt)*P
+                        print( 'xxx            short lost , hit stoploss ' + str(entry_price_upper_short) + ' curr price:'+ str(kl[2])  +' fund:'+ str(initCapital) + '@' +str(kl[0]) )
                         punish_cnt+=1
                         entry_price_upper_short = 99999999
                         entry_price_lower_short = 0
@@ -526,15 +526,25 @@ def backtest_longshort_IL_change(ins):
                 # gain money
                 if(entry_price_lower_long>0):
                     if(float(kl[2])>=entry_price_upper_long):
-                        print( ' ￥ long win , hit price upper ' + str(entry_price_upper_long) + ' curr high:'+str(kl[2]) + ' exit time' +str(kl[0]) ) 
-                        initCapital /= punishment
+                        P = entry_price_upper_long
+                        # 當前經過 IL 計算之後部位剩餘顆數
+                        P_clamp = min(max(P,entry_price_lower_long),entry_price_upper_long)
+                        amt1,amt2 = getILPriceChange(entry_price_long,P_clamp,entry_price_upper_long,entry_price_lower_long,deltaX_long,deltaY_long)
+                        initCapital = amt1 * P + amt2
+                        print( ' ￥ long win , hit price upper ' + str(entry_price_upper_long) + ' curr high:'+str(kl[2]) +' fund:'+ str(initCapital) + ' exit time' +str(kl[0]) ) 
+                        
                         entry_price_upper_long = 0
                         entry_price_lower_long = 0
             
                 # lose money
                 if(float(kl[3])<=entry_price_lower_long):
-                    print( 'xxx         long lost , hit stoploss ' + str(entry_price_lower_long) + ' curr low:'+str(kl[3]) + '@' +str(kl[0]) )
-                    initCapital *= punishment
+                    P = entry_price_lower_long
+                    # 當前經過 IL 計算之後部位剩餘顆數
+                    P_clamp = min(max(P,entry_price_lower_long),entry_price_upper_long)
+                    amt1,amt2 = getILPriceChange(entry_price_long,P_clamp,entry_price_upper_long,entry_price_lower_long,deltaX_long,deltaY_long)
+                    initCapital = amt1 * P + amt2
+                    print( 'xxx         long lost , hit stoploss ' + str(entry_price_lower_long) + ' curr low:'+str(kl[3]) +' fund:'+ str(initCapital) +  '@' +str(kl[0]) )
+                    
                     punish_cnt+=1
                     entry_price_upper_long = 0
                     entry_price_lower_long = 0        
