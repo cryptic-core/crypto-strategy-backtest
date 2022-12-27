@@ -337,11 +337,114 @@ def backtest_boll_entry_short(ins):
     print('short test final capital '+str(initCapital) + ' failed cnt '+str(punish_cnt))
 
 
-#    
+def backtest_boll_longshort(ins):
+    print('start boll dual entry test')
+    all_klines = []
+    with open(os.getcwd()+'/data/'+ins+'_1h.csv') as file_name:
+        file_read = csv.reader(file_name)
+        all_klines = list(file_read)
+    all_klines.pop(0)
+    
+    
+    initCapital = 100000
+    entry_price_upper_long = 0
+    entry_price_lower_long = 0
+    
+    entry_price_upper_short = 0
+    entry_price_lower_short = 0    
+    
+    entry_time = 0
+    punish_cnt = 0
+    punishment = 0.8
+    riskratio = 0.03
+    start_hour = 6
+    priceRank = {}
+    #skip_num = 24*365*2 # 前兩年不看
+    skip_num = 24*365
+    for k in range(skip_num,len(all_klines)-1):
+        kl = all_klines[k]
+        curhour = int(kl[0].split(' ')[1].split(':')[0])
+        numbar = min(boll_cnt*24,k)
+        if(curhour == start_hour):
+            priceRank = calc_price_ranking(all_klines[k-numbar:k+1])
+            #print('new price rank setup ' + str(priceRank['LL']))
+        
+        if(priceRank != {}):
+            
+            if(entry_price_lower_short<0.001):
+                #print('price test '+str(float(kl[3])) + ' ' + str(priceRank['ML']))
+                # short entry
+                if(float(kl[2])>=priceRank['HH']):
+                    hedgeamt = initCapital*0.7
+                    short_coin_amt = hedgeamt / float(kl[2])
+                    liquidation_price = initCapital / short_coin_amt 
+                    entry_price_upper_short = liquidation_price*0.9 
+                    entry_price_lower_short = priceRank['LL']
+                    entry_time = k
+                    print('------- new short entry :' + kl[2] +' sl:'+ str(entry_price_upper_short) + ' (before liquidation) entry time ' + str(kl[0]))
+            
+                # long entry
+                #print('price test '+str(float(kl[3])) + ' ' + str(priceRank['ML']))
+            if(entry_price_lower_long<0.001):
+                if(float(kl[3])<=priceRank['LL']):
+                    entry_price_upper_long = priceRank['HH']
+                    entry_price_lower_long = priceRank['LL']*0.5
+                    entry_time = k
+                    print('+++++++ new long entry price' + str(entry_price_lower_long) + ' entry time ' + str(kl[0]))
+        
+        
+            if(k>entry_time):
+                # gain money
+                if(entry_price_lower_short>0):
+                    if(float(kl[3])<=entry_price_lower_short):
+                        print(  '￥ short win , hit price lower ' + str(entry_price_lower_short) + ' lower price:'+str(kl[3]) + ' exit time' +str(kl[0]) ) 
+                        initCapital /= punishment
+                        entry_price_upper_short = 99999999
+                        entry_price_lower_short = 0
+            
+                # lose money
+                if(float(kl[2])>=entry_price_upper_short):
+                    print( '            short lost , hit stoploss ' + str(entry_price_upper_short) + ' curr price:'+ str(kl[2]) + '@' +str(kl[0]) )
+                    initCapital *= punishment
+                    punish_cnt+=1
+                    entry_price_upper_short = 99999999
+                    entry_price_lower_short = 0
+            
+                    if(priceRank != {}):
+                        if(entry_price_upper_short<0.001):
+                            #print('price test '+str(float(kl[3])) + ' ' + str(priceRank['ML']))
+                            if(float(kl[3])<=priceRank['LL']):
+                                entry_price_upper_short = priceRank['HH']
+                                entry_price_lower_short = priceRank['LL']*0.5
+                                entry_time = k
+                                print(' short new entry price' + str(entry_price_lower_short) + ' entry time ' + str(kl[0]))
+                        
+            
+                # gain money
+                if(entry_price_lower_long>0):
+                    if(float(kl[2])>=entry_price_upper_long):
+                        print( ' ￥ long win , hit price upper ' + str(entry_price_lower_long) + ' curr high:'+str(kl[2]) + ' exit time' +str(kl[0]) ) 
+                        initCapital /= punishment
+                        entry_price_upper_long = 0
+                        entry_price_lower_long = 0
+            
+                # lose money
+                if(float(kl[3])<=entry_price_lower_long):
+                    print( '         long lost , hit stoploss ' + str(entry_price_lower_long) + ' curr low:'+str(kl[3]) + '@' +str(kl[0]) )
+                    initCapital *= punishment
+                    punish_cnt+=1
+                    entry_price_upper_long = 0
+                    entry_price_lower_long = 0        
+
+            
+    print('dual test final capital '+str(initCapital) + ' failed cnt '+str(punish_cnt))
+
+  
 for ins in instruments:
     hourRangeCompute(ins)
     backtest_neutral_low_vol(ins)
     #backtest_boll_entry_long(ins)
-    backtest_boll_entry_short(ins)
+    #backtest_boll_entry_short(ins)
+    backtest_boll_longshort(ins)
 
 print('finished')
