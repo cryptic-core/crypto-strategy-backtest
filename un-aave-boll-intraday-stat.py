@@ -421,9 +421,9 @@ def backtest_longshort_IL_change(ins):
     df = pd.read_csv(infile, parse_dates=['Open time'], date_parser=dateparse)
     dt_ret = df.drop_duplicates(subset=['Open time'],keep='last')
     dt_ret = dt_ret.filter(['Open time','Close'], axis=1)
-    dt_ret['return'] = dt_ret['Close'].astype(float).pct_change(1)
+    #dt_ret['return'] = dt_ret['Close'].astype(float).pct_change(1)
     dt_ret.set_index(pd.DatetimeIndex(dt_ret['Open time']),inplace=True)
-    qsdf = dt_ret["return"].copy()
+    qsdf = dt_ret[['Open time','Close']].copy()
     
     
     
@@ -454,10 +454,10 @@ def backtest_longshort_IL_change(ins):
     punish_cnt = 0
     # records
     priceRank = {}
-    start_hour = 22
-    datecnter = 0 # record 專用
+    start_hour = 22 # record 專用
     #skip_num = 24*365*2 # 前兩年不看
     skip_num = 24*365
+    qsdf = qsdf.iloc[int(skip_num/24):]
     for k in range(skip_num,len(all_klines)-1):
         kl = all_klines[k]
         curhour = int(kl[0].split(' ')[1].split(':')[0])
@@ -466,8 +466,10 @@ def backtest_longshort_IL_change(ins):
             priceRank = calc_price_ranking(all_klines[k-numbar:k+1])
             #print('new price rank setup ' + str(priceRank['LL']))
             net_value = equity_long + equity_short
-            qsdf.iloc[datecnter] = net_value
-            datecnter+=1
+            #idx = qsdf.index.get_loc(kl[0].split(' ')[0])
+            _dt = datetime.strptime(kl[0].split(' ')[0],'%Y-%m-%d')
+            qsdf.at[_dt, 'Close'] = net_value
+            print(qsdf.at[_dt, 'Close'])
             
         if(priceRank != {}):
             
@@ -565,8 +567,11 @@ def backtest_longshort_IL_change(ins):
                     punish_cnt+=1
                     entry_price_upper_long = 0
                     entry_price_lower_long = 0        
-
     
+    # report 
+    qsdf['return'] = qsdf['Close'].astype(float).pct_change(1)
+    mqt = qsdf[['return']].copy()
+    matx = qs.reports.metrics(mqt,mode='full',display=True,prepare_returns=False)
     print('dual test final capital '+str( equity_long + equity_short ) + ' failed cnt '+str(punish_cnt))
 
 def backtest_boll_longshort(ins):
