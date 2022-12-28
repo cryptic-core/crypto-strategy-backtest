@@ -13,6 +13,7 @@ import csv
 import random
 import string
 import numpy as np
+import quantstats as qs
 
 
 base_url = "https://api.binance.com/api/v3/"
@@ -408,13 +409,26 @@ def backtest_boll_entry_short(ins):
 def backtest_longshort_IL_change(ins):
     print('start boll dual IL Change entry test')
     all_klines = []
-    with open(os.getcwd()+'/data/'+ins+'_1h.csv') as file_name:
+    infile = os.getcwd()+'/data/'+ins+'_1h.csv'
+    with open(infile) as file_name:
         file_read = csv.reader(file_name)
         all_klines = list(file_read)
     all_klines.pop(0)
     
+    # prepare dataframe for qs
+    # 每日統計
+    dateparse = lambda x:pd.to_datetime(x).date()  # datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
+    df = pd.read_csv(infile, parse_dates=['Open time'], date_parser=dateparse)
+    dt_ret = df.drop_duplicates(subset=['Open time'],keep='last')
+    dt_ret = dt_ret.filter(['Open time','Close'], axis=1)
+    dt_ret['return'] = dt_ret['Close'].astype(float).pct_change(1)
+    dt_ret.set_index(pd.DatetimeIndex(dt_ret['Open time']),inplace=True)
+    qsdf = dt_ret["return"].copy()
+    
+    
     
     initCapital = 100000
+    equity_long = initCapital * 0.5
     entry_price_upper_long = 0
     entry_price_lower_long = 0
     entry_price_long = 0
@@ -423,6 +437,7 @@ def backtest_longshort_IL_change(ins):
     deltaX_long=0
     deltaY_long=0
     
+    equity_short = initCapital * 0.5
     entry_price_upper_short = 0
     entry_price_lower_short = 0
     entry_price_short = 0
@@ -435,39 +450,41 @@ def backtest_longshort_IL_change(ins):
     deltaX_short=0
     deltaY_short=0
     
-    
     entry_time = 0
     punish_cnt = 0
-    punishment = 0.8
-    riskratio = 0.03
-    start_hour = 6
+    # records
     priceRank = {}
+    start_hour = 22
+    datecnter = 0 # record 專用
     #skip_num = 24*365*2 # 前兩年不看
     skip_num = 24*365
     for k in range(skip_num,len(all_klines)-1):
         kl = all_klines[k]
         curhour = int(kl[0].split(' ')[1].split(':')[0])
         numbar = min(boll_cnt*24,k)
-        if(curhour == start_hour):
+        if(curhour == start_hour): # collect record
             priceRank = calc_price_ranking(all_klines[k-numbar:k+1])
             #print('new price rank setup ' + str(priceRank['LL']))
-        
+            net_value = equity_long + equity_short
+            qsdf.iloc[datecnter] = net_value
+            datecnter+=1
+            
         if(priceRank != {}):
             
             if(entry_price_lower_short<0.001):
                 #print('price test '+str(float(kl[3])) + ' ' + str(priceRank['ML']))
                 # short entry
                 if(float(kl[2])>=priceRank['HH']):
-                    hedgeamt = initCapital*0.7
+                    hedgeamt = equity_short*0.7
                     short_coin_amt = hedgeamt / float(kl[2])
-                    liquidation_price = initCapital / short_coin_amt 
+                    liquidation_price = equity_short / short_coin_amt 
                     entry_price_upper_short = liquidation_price*0.9
                     entry_price_lower_short = priceRank['LL']
                     
                     # 
                     entry_price_short = priceRank['HH']
                     # 一開始借幣數量
-                    hedgeUSDAmt = initCapital * hedgeRatio
+                    hedgeUSDAmt = equity_short * hedgeRatio
                     # 借來的顆數
                     shortAmt = hedgeUSDAmt/entry_price_short
                     # 借來的顆數實際拿下去作市的數量
@@ -478,7 +495,7 @@ def backtest_longshort_IL_change(ins):
                     deltaX_short,deltaY_short = getTokenAmountsFromDepositAmounts(entry_price_short, entry_price_lower_short, entry_price_upper_short, entry_price_short, 1, mining_usd_amt)
                     
                     entry_time = k
-                    print('------- new short entry :' + kl[2] +' sl:'+ str(entry_price_upper_short)  +' fund:'+ str(initCapital) + ' entry time ' + str(kl[0]))
+                    print('------- new short entry :' + kl[2] +' sl:'+ str(entry_price_upper_short)  +' fund:'+ str(equity_short) + ' entry time ' + str(kl[0]))
             
             # long entry
             #print('price test '+str(float(kl[3])) + ' ' + str(priceRank['ML']))
@@ -488,13 +505,13 @@ def backtest_longshort_IL_change(ins):
                     entry_price_lower_long = priceRank['LL'] * 0.2
                     entry_price_long = priceRank['LL']
                     entry_time = k
-                    deltaX_long,deltaY_long = getTokenAmountsFromDepositAmounts(entry_price_long, entry_price_lower_long, entry_price_upper_long, entry_price_long, 1, initCapital)
+                    deltaX_long,deltaY_long = getTokenAmountsFromDepositAmounts(entry_price_long, entry_price_lower_long, entry_price_upper_long, entry_price_long, 1, equity_long)
                     
-                    print('+++++++ new long entry price '+ kl[2] + ' sl:'+ str(entry_price_lower_long)  +' fund:'+ str(initCapital) + ' entry time ' + str(kl[0]))
+                    print('+++++++ new long entry price '+ kl[2] + ' sl:'+ str(entry_price_lower_long)  +' fund:'+ str(equity_long) + ' entry time ' + str(kl[0]))
         
         
             if(k>entry_time):
-                # gain money
+                # short win 
                 if(entry_price_lower_short>0):
                     if(float(kl[3])<=entry_price_lower_short):
                         
@@ -503,40 +520,40 @@ def backtest_longshort_IL_change(ins):
                         P_clamp = min(max(P,entry_price_lower_short),entry_price_upper_short)
                         amt1,amt2 = getILPriceChange(entry_price_short,P_clamp,entry_price_upper_short,entry_price_lower_short,deltaX_short,deltaY_short)
                         curamt = amt1+amt2/P + longAmt
-                        initCapital = initCapital - (shortAmt - curamt)*P
-                        print(  '￥ short win , hit price lower ' + str(entry_price_lower_short) + ' lower price:'+str(kl[3]) +' fund:'+ str(initCapital) +' exit time' +str(kl[0]) )
+                        equity_short = equity_short - (shortAmt - curamt)*P
+                        print(  '￥ short win , hit price lower ' + str(entry_price_lower_short) + ' lower price:'+str(kl[3]) +' fund:'+ str(equity_short) +' exit time' +str(kl[0]) )
                         
                         entry_price_upper_short = 99999999
                         entry_price_lower_short = 0
             
-                    # lose money
+                    # short lost
                     if(float(kl[2])>=entry_price_upper_short):
                         P = entry_price_upper_short
                         # 當前經過 IL 計算之後部位剩餘顆數
                         P_clamp = min(max(P,entry_price_lower_short),entry_price_upper_short)
                         amt1,amt2 = getILPriceChange(entry_price_short,P_clamp,entry_price_upper_short,entry_price_lower_short,deltaX_short,deltaY_short)
                         curamt = amt1+amt2/P + longAmt
-                        initCapital = initCapital - (shortAmt - curamt)*P
-                        print( 'xxx            short lost , hit stoploss ' + str(entry_price_upper_short) + ' curr price:'+ str(kl[2])  +' fund:'+ str(initCapital) + '@' +str(kl[0]) )
+                        equity_short = equity_short - (shortAmt - curamt)*P
+                        print( 'xxx            short lost , hit stoploss ' + str(entry_price_upper_short) + ' curr price:'+ str(kl[2])  +' fund:'+ str(equity_short) + '@' +str(kl[0]) )
                         punish_cnt+=1
                         entry_price_upper_short = 99999999
                         entry_price_lower_short = 0
                 
 
-                # gain money
+                # long win
                 if(entry_price_lower_long>0):
                     if(float(kl[2])>=entry_price_upper_long):
                         P = entry_price_upper_long
                         # 當前經過 IL 計算之後部位剩餘顆數
                         P_clamp = min(max(P,entry_price_lower_long),entry_price_upper_long)
                         amt1,amt2 = getILPriceChange(entry_price_long,P_clamp,entry_price_upper_long,entry_price_lower_long,deltaX_long,deltaY_long)
-                        initCapital = amt1 * P + amt2
-                        print( ' ￥ long win , hit price upper ' + str(entry_price_upper_long) + ' curr high:'+str(kl[2]) +' fund:'+ str(initCapital) + ' exit time' +str(kl[0]) ) 
+                        equity_long = amt1 * P + amt2
+                        print( ' ￥ long win , hit price upper ' + str(entry_price_upper_long) + ' curr high:'+str(kl[2]) +' fund:'+ str(equity_long) + ' exit time' +str(kl[0]) ) 
                         
                         entry_price_upper_long = 0
                         entry_price_lower_long = 0
             
-                # lose money
+                # long lost
                 if(float(kl[3])<=entry_price_lower_long):
                     P = entry_price_lower_long
                     # 當前經過 IL 計算之後部位剩餘顆數
@@ -549,8 +566,8 @@ def backtest_longshort_IL_change(ins):
                     entry_price_upper_long = 0
                     entry_price_lower_long = 0        
 
-            
-    print('dual test final capital '+str(initCapital) + ' failed cnt '+str(punish_cnt))
+    
+    print('dual test final capital '+str( equity_long + equity_short ) + ' failed cnt '+str(punish_cnt))
 
 def backtest_boll_longshort(ins):
     print('start boll dual entry test')
