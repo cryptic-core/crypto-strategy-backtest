@@ -422,7 +422,7 @@ def backtest_longshort_IL_change(ins):
     dft = df.drop_duplicates(subset=['Open time'],keep='last')
     dt_ret = dft.filter(['Open time','Close'], axis=1)
     #dt_ret['return'] = dt_ret['Close'].astype(float).pct_change(1)
-    #dt_ret.set_index(pd.DatetimeIndex(dt_ret['Open time']),inplace=True)
+    dt_ret.set_index(pd.DatetimeIndex(dt_ret['Open time']),inplace=True)
     qsdf = dt_ret[['Open time','Close']].copy()
     
     
@@ -458,7 +458,6 @@ def backtest_longshort_IL_change(ins):
     #skip_num = 24*365*2 # 前兩年不看
     skip_num = 24*365
     qsdf = qsdf.iloc[int(skip_num/24):]
-    qsdf.reset_index(inplace=True)
     for k in range(skip_num,len(all_klines)-1):
         kl = all_klines[k]
         curhour = int(kl[0].split(' ')[1].split(':')[0])
@@ -471,7 +470,10 @@ def backtest_longshort_IL_change(ins):
             #_timstamp = datetime.strptime(kl[0].split(' ')[0],'%Y-%m-%d').timestamp()
             #_ts = qsdf['Open time'].iloc[k-skip_num]
             #qsdf['Open time'].iloc[0] 
-            qsdf.at[k-skip_num,'Close'] = net_value
+            #qsdf.at[k-skip_num,'Close'] = net_value
+            #print(qsdf.at[_dt, 'Close'])
+            _dt = datetime.strptime(kl[0].split(' ')[0],'%Y-%m-%d')
+            qsdf.at[_dt, 'Close'] = net_value
             #print(qsdf.at[_dt, 'Close'])
             
         if(priceRank != {}):
@@ -573,8 +575,9 @@ def backtest_longshort_IL_change(ins):
     
     # report 
     qsdf['return'] = qsdf['Close'].astype(float).pct_change(1)
-    #matx = qs.reports.metrics(qsdf['return'],benchmark='Close' ,mode='full',display=True,prepare_returns=True)
-    htmls = qs.reports.html(qsdf['return'],benchmark='Close',title="uni-aave-longshort",output="uni-aave-longshort.html")
+    mqt = qsdf[['return']].copy()
+    matx = qs.reports.metrics(mqt,mode='full',display=True,prepare_returns=False)
+    #htmls = qs.reports.html(qsdf['return'],title="uni-aave-longshort",output="uni-aave-longshort.html")
     
     print('dual test final capital '+str( equity_long + equity_short ) + ' failed cnt '+str(punish_cnt))
 
