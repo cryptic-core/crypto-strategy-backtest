@@ -425,6 +425,13 @@ def backtest_longshort_IL_change(ins):
     dt_ret.set_index(pd.DatetimeIndex(dt_ret['Open time']),inplace=True)
     qsdf = dt_ret[['Open time','Close']].copy()
     
+    # prepare dataframe for plot
+    dateparser = lambda x:datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
+    dfh = pd.read_csv(infile, parse_dates=['Open time'], date_parser=dateparser, encoding='utf-8')
+    dfh['long_entry'] = 0
+    dfh['long_exit'] = 0
+    dfh['short_entry'] = 0
+    dfh['short_exit'] = 0
     
     
     initCapital = 100000
@@ -458,6 +465,7 @@ def backtest_longshort_IL_change(ins):
     #skip_num = 24*365*2 # 前兩年不看
     skip_num = 24*365
     qsdf = qsdf.iloc[int(skip_num/24):]
+    dfh = dfh.iloc[int(skip_num):]
     for k in range(skip_num,len(all_klines)-1):
         kl = all_klines[k]
         curhour = int(kl[0].split(' ')[1].split(':')[0])
@@ -503,7 +511,7 @@ def backtest_longshort_IL_change(ins):
                     
                     entry_time = k
                     print('------- new short entry :' + kl[2] +' sl:'+ str(entry_price_upper_short)  +' fund:'+ str(equity_short) + ' entry time ' + str(kl[0]))
-            
+                    dfh.at[k,'short_entry'] = 1
             # long entry
             #print('price test '+str(float(kl[3])) + ' ' + str(priceRank['ML']))
             if(entry_price_lower_long<0.001):
@@ -515,8 +523,8 @@ def backtest_longshort_IL_change(ins):
                     deltaX_long,deltaY_long = getTokenAmountsFromDepositAmounts(entry_price_long, entry_price_lower_long, entry_price_upper_long, entry_price_long, 1, equity_long)
                     
                     print('+++++++ new long entry price '+ kl[2] + ' sl:'+ str(entry_price_lower_long)  +' fund:'+ str(equity_long) + ' entry time ' + str(kl[0]))
-        
-        
+                    dfh.at[k,'long_entry'] = 1
+                    
             if(k>entry_time):
                 # short win 
                 if(entry_price_lower_short>0):
@@ -532,7 +540,8 @@ def backtest_longshort_IL_change(ins):
                         
                         entry_price_upper_short = 99999999
                         entry_price_lower_short = 0
-            
+                        
+                        dfh.at[k,'short_exit'] = 1
                     # short lost
                     if(float(kl[2])>=entry_price_upper_short):
                         P = entry_price_upper_short
@@ -545,7 +554,8 @@ def backtest_longshort_IL_change(ins):
                         punish_cnt+=1
                         entry_price_upper_short = 99999999
                         entry_price_lower_short = 0
-                
+                        
+                        dfh.at[k,'short_exit'] = 1
 
                 # long win
                 if(entry_price_lower_long>0):
@@ -559,6 +569,8 @@ def backtest_longshort_IL_change(ins):
                         
                         entry_price_upper_long = 0
                         entry_price_lower_long = 0
+                        
+                        dfh.at[k,'long_exit'] = 1
             
                 # long lost
                 if(float(kl[3])<=entry_price_lower_long):
@@ -571,7 +583,10 @@ def backtest_longshort_IL_change(ins):
                     
                     punish_cnt+=1
                     entry_price_upper_long = 0
-                    entry_price_lower_long = 0        
+                    entry_price_lower_long = 0
+                    
+                    dfh.at[k,'long_exit'] = 1
+                    
     
     # report 
     qsdf['return'] = qsdf['Close'].astype(float).pct_change(1)
@@ -580,7 +595,27 @@ def backtest_longshort_IL_change(ins):
     #htmls = qs.reports.html(qsdf['return'],title="uni-aave-longshort",output="uni-aave-longshort.html")
     
     print('dual test final capital '+str( equity_long + equity_short ) + ' failed cnt '+str(punish_cnt))
-
+    
+    
+    # draw plot
+    fig=plt.figure(figsize=(10,5))
+    # Create a figure and a set of subplots
+    fig, axs = plt.subplots(2)
+    
+    # Plot the data in the first subplot
+    axs[0].plot(x, y1)
+    axs[0].plot(newbie['price'][newbie['signals']==1],marker='^',markersize=12,lw=0,c='g',label='LONG')
+    axs[0].plot(newbie['price'][newbie['signals']==-1],marker='v',markersize=12,lw=0,c='r',label='SHORT')    
+    axs[0].set_xlabel('date')
+    axs[0].set_ylabel('price')
+    
+    # Plot equity curve
+    axs[1].plot(x, y2)
+    ax.text(x[-1], y[-1], "Text beside the plot", ha="left", va="center")    
+    axs[1].set_xlabel('date')
+    axs[1].set_ylabel('equity')
+    
+    
 def backtest_boll_longshort(ins):
     print('start boll dual entry test')
     all_klines = []
@@ -697,3 +732,34 @@ for ins in instruments:
     backtest_longshort_IL_change(ins)
     
 print('finished')
+
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.text import Text
+# Create some data
+x = np.linspace(0, 2*np.pi, 100)
+y1 = np.sin(x)
+y2 = np.cos(x)
+
+fig, axs = plt.subplots(3)
+
+# Plot the data in the first subplot
+axs[0].plot(x, y1)
+#axs[0].plot(newbie['price'][newbie['signals']==1],marker='^',markersize=12,lw=0,c='g',label='LONG')
+#axs[0].plot(newbie['price'][newbie['signals']==-1],marker='v',markersize=12,lw=0,c='r',label='SHORT')    
+axs[0].set_xlabel('date')
+axs[0].set_ylabel('price')
+
+# Plot equity curve
+axs[1].plot(x, y2)
+axs[1].set_xlabel('date')
+axs[1].set_ylabel('equity')
+text = Text(x=0.5, y=0.5, text="This is a text area", ha="center", va="center", transform=axs[1].transAxes)
+axs[1].add_artist(text)
+# Show the plot
+plt.show()
+
+
+
