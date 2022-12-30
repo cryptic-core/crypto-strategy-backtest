@@ -19,7 +19,7 @@ import quantstats as qs
 base_url = "https://api.binance.com/api/v3/"
 kline_req_url = base_url+"klines"
 itv='1h'
-instruments=['ETH']
+instruments=['MATIC']
 
 ONE_DAY = 86400
 now = int(datetime.now().timestamp())
@@ -481,6 +481,7 @@ def backtest_longshort_IL_change(ins):
             #qsdf.at[k-skip_num,'Close'] = net_value
             #print(qsdf.at[_dt, 'Close'])
             _dt = datetime.strptime(kl[0].split(' ')[0],'%Y-%m-%d')
+            #ymd = kl[0].split(' ')[0]
             qsdf.at[_dt, 'Close'] = net_value
             #print(qsdf.at[_dt, 'Close'])
             
@@ -597,23 +598,6 @@ def backtest_longshort_IL_change(ins):
     print('dual test final capital '+str( equity_long + equity_short ) + ' failed cnt '+str(punish_cnt))
     
     
-    # draw plot
-    fig=plt.figure(figsize=(10,5))
-    # Create a figure and a set of subplots
-    fig, axs = plt.subplots(2)
-    
-    # Plot the data in the first subplot
-    axs[0].plot(x, y1)
-    axs[0].plot(newbie['price'][newbie['signals']==1],marker='^',markersize=12,lw=0,c='g',label='LONG')
-    axs[0].plot(newbie['price'][newbie['signals']==-1],marker='v',markersize=12,lw=0,c='r',label='SHORT')    
-    axs[0].set_xlabel('date')
-    axs[0].set_ylabel('price')
-    
-    # Plot equity curve
-    axs[1].plot(x, y2)
-    ax.text(x[-1], y[-1], "Text beside the plot", ha="left", va="center")    
-    axs[1].set_xlabel('date')
-    axs[1].set_ylabel('equity')
     
     
 def backtest_boll_longshort(ins):
@@ -732,34 +716,5 @@ for ins in instruments:
     backtest_longshort_IL_change(ins)
     
 print('finished')
-
-
-
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.text import Text
-# Create some data
-x = np.linspace(0, 2*np.pi, 100)
-y1 = np.sin(x)
-y2 = np.cos(x)
-
-fig, axs = plt.subplots(3)
-
-# Plot the data in the first subplot
-axs[0].plot(x, y1)
-#axs[0].plot(newbie['price'][newbie['signals']==1],marker='^',markersize=12,lw=0,c='g',label='LONG')
-#axs[0].plot(newbie['price'][newbie['signals']==-1],marker='v',markersize=12,lw=0,c='r',label='SHORT')    
-axs[0].set_xlabel('date')
-axs[0].set_ylabel('price')
-
-# Plot equity curve
-axs[1].plot(x, y2)
-axs[1].set_xlabel('date')
-axs[1].set_ylabel('equity')
-text = Text(x=0.5, y=0.5, text="This is a text area", ha="center", va="center", transform=axs[1].transAxes)
-axs[1].add_artist(text)
-# Show the plot
-plt.show()
-
 
 
