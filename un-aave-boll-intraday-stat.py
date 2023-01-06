@@ -472,6 +472,18 @@ def backtest_longshort_IL_change(ins):
         numbar = min(boll_cnt*24,k)
         if(curhour == start_hour): # collect record
             priceRank = calc_price_ranking(all_klines[k-numbar:k+1])
+            
+            P = float(kl[4])
+            if(entry_price_lower_long>0):
+                P_clamp = min(max(P,entry_price_lower_long),entry_price_upper_long)
+                amt1,amt2 = getILPriceChange(entry_price_long,P_clamp,entry_price_upper_long,entry_price_lower_long,deltaX_long,deltaY_long)
+                equity_long = amt1 * P + amt2
+            elif(entry_price_lower_short>0):
+                P_clamp = min(max(P,entry_price_lower_short),entry_price_upper_short)
+                amt1,amt2 = getILPriceChange(entry_price_short,P_clamp,entry_price_upper_short,entry_price_lower_short,deltaX_short,deltaY_short)
+                curamt = amt1+amt2/P + longAmt
+                equity_short = equity_short - (shortAmt - curamt)*P
+            
             #print('new price rank setup ' + str(priceRank['LL']))
             net_value = equity_long + equity_short
             
@@ -483,7 +495,7 @@ def backtest_longshort_IL_change(ins):
             _dt = datetime.strptime(kl[0].split(' ')[0],'%Y-%m-%d')
             #ymd = kl[0].split(' ')[0]
             qsdf.at[_dt, 'Close'] = net_value
-            #print(qsdf.at[_dt, 'Close'])
+            #print(kl[0] + ' equity' + str(qsdf.at[_dt, 'Close']))
             
         if(priceRank != {}):
             
