@@ -89,6 +89,7 @@ async def download_candlestick_data():
 
 def backtest_liquidation():
     num_days = 20
+    num_days_lowest_low = 10
     for coin in coin_list:
         # Read both CSVs with datetime index
         df_liquidations = pd.read_csv(f'data/liquidation_data/{coin}-liquidation-data.csv', 
@@ -114,7 +115,7 @@ def backtest_liquidation():
         # Check if current low is the lowest in the previous 20-day window
         df_merged['lowest_low'] = (
             df_merged['low'] <= 
-            df_merged['low'].rolling(window=num_days, min_periods=1).min()
+            df_merged['low'].rolling(window=num_days_lowest_low, min_periods=1).min()
         ).astype(int)
         
         # Create signal column where both conditions are met
