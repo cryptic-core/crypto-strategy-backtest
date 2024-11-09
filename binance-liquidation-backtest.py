@@ -1,9 +1,11 @@
 import sys,os
 import requests
+import json
 import platform
 from datetime import datetime, timedelta
 import pandas as pd
-import io
+import asyncio
+import aiohttp
 from zipfile import ZipFile
 
 coin_list = ['BTCUSDT',"ETHUSDT","SOLUSDT","DOGEUSDT"]
@@ -44,8 +46,86 @@ def download_liquidation_data():
             print(f'Failed to download data for {coin}')
         df_liquidations.to_csv(f'data/liquidation_data/{coin}-liquidation-data.csv')
 
+
+async def download_candlestick_data():
+    for coin in coin_list:
+        df = pd.read_csv(f'data/liquidation_data/{coin}-liquidation-data.csv', index_col=0, parse_dates=True)
+        # Convert datetime index to timestamp (milliseconds)
+        startTime = int(df.index[0].timestamp() * 1000)
+        endTime = int(df.index[-1].timestamp() * 1000)
+        t = startTime
+        df_candlesticks = pd.DataFrame(
+            columns=['timestamp','open', 'high', 'low', 'close', 'volume'],
+        )
+        while(t <= endTime):
+            url = "https://api.binance.com/api/v3/klines"
+            # Set the parameters for the API request
+            params = {
+                'symbol': coin,
+                'interval': '1d',
+                'startTime': t, 
+                'limit': 1000
+            }
+            # Make the request to the Binance API
+            response = requests.get(url, params=params)
+            arrobj_r = json.loads(response.text)
+                
+            for fds in arrobj_r:
+                newrow = {
+                    'timestamp': fds[0],
+                    'open': float(fds[1]),
+                    'high': float(fds[2]),
+                    'low': float(fds[3]),
+                    'close': float(fds[4]),
+                    'volume': float(fds[5])
+                }
+                df_candlesticks = pd.concat([df_candlesticks, pd.DataFrame([newrow])], ignore_index=True)
+
+            t = arrobj_r[-1][0]
+        
+        # Save the data
+        df_candlesticks.index = pd.to_datetime(df_candlesticks['timestamp'], unit='ms')
+        df_candlesticks.to_csv(f'data/candlestick_data/{coin}-candlestick-data.csv')
+
 def backtest_liquidation():
-    pass
+    num_days = 20
+    for coin in coin_list:
+        # Read both CSVs with datetime index
+        df_liquidations = pd.read_csv(f'data/liquidation_data/{coin}-liquidation-data.csv', 
+                                    index_col=0, 
+                                    parse_dates=True)
+        df_candlesticks = pd.read_csv(f'data/candlestick_data/{coin}-candlestick-data.csv', 
+                                     index_col=0, 
+                                     parse_dates=True)
+        
+        # Merge the dataframes on datetime index
+        df_merged = pd.merge(df_liquidations, 
+                           df_candlesticks, 
+                           left_index=True, 
+                           right_index=True, 
+                           how='inner')
+        
+        # Add big_liq column based on 20-day rolling maximum comparison
+        df_merged['big_liq'] = (
+            df_merged['liquidation_usd_amount'] >= 
+            df_merged['liquidation_usd_amount'].rolling(window=num_days, min_periods=1).max()
+        ).astype(int)
+        
+        # Check if current low is the lowest in the previous 20-day window
+        df_merged['lowest_low'] = (
+            df_merged['low'] <= 
+            df_merged['low'].rolling(window=num_days, min_periods=1).min()
+        ).astype(int)
+        
+        # Create signal column where both conditions are met
+        df_merged['signal'] = (df_merged['big_liq'] & df_merged['lowest_low']).astype(int)
+        
+        print(f"\nBig liquidation events for {coin}:")
+        # Print only rows where signal == 1
+        print(df_merged[df_merged['signal'] == 1])
+        
+        # Optionally save the merged data
+        df_merged.to_csv(f'data/merged/{coin}-merged-data.csv')
 
 if __name__ == '__main__':
     os_name = platform.system()
@@ -53,4 +133,6 @@ if __name__ == '__main__':
     if mode == 0:
         download_liquidation_data()
     elif mode == 1:
+        asyncio.run(download_candlestick_data())
+    elif mode == 2:
         backtest_liquidation()

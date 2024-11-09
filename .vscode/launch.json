@@ -15,12 +15,22 @@
             "justMyCode": false
         },
         {
-            "name": "Backtest Binance Liquidation",
+            "name": "Download candlestick Data",
             "type": "debugpy",
             "python":"/Users/kang/opt/anaconda3/envs/sele/bin/python",
             "request": "launch",
             "program": "${workspaceFolder}/binance-liquidation-backtest.py",
             "args": ["1"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Backtest Binance Liquidation",
+            "type": "debugpy",
+            "python":"/Users/kang/opt/anaconda3/envs/sele/bin/python",
+            "request": "launch",
+            "program": "${workspaceFolder}/binance-liquidation-backtest.py",
+            "args": ["2"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
