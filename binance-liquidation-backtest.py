@@ -3,6 +3,7 @@ import requests
 import json
 import platform
 from datetime import datetime, timedelta
+import numpy as np
 import pandas as pd
 import asyncio
 import aiohttp
@@ -46,7 +47,6 @@ def download_liquidation_data():
             print(f'Failed to download data for {coin}')
         df_liquidations.to_csv(f'data/liquidation_data/{coin}-liquidation-data.csv')
 
-
 async def download_candlestick_data():
     for coin in coin_list:
         df = pd.read_csv(f'data/liquidation_data/{coin}-liquidation-data.csv', index_col=0, parse_dates=True)
@@ -87,46 +87,182 @@ async def download_candlestick_data():
         df_candlesticks.index = pd.to_datetime(df_candlesticks['timestamp'], unit='ms')
         df_candlesticks.to_csv(f'data/candlestick_data/{coin}-candlestick-data.csv')
 
-def backtest_liquidation():
+def calculate_benchmark_returns(df, initial_portfolio_size=100):
+    df['benchmark_return'] = df['close'].pct_change()
+    df['benchmark_cumulative'] = (1 + df['benchmark_return']).cumprod() * initial_portfolio_size
+    df.loc[df.index[0], 'benchmark_cumulative'] = initial_portfolio_size  # Set the first value to the initial portfolio size
+    return df[['date', 'benchmark_cumulative']]
+
+def manage_positions(df, initial_portfolio_size=100):
+    trades = []
+    portfolio_size = initial_portfolio_size
+    cumulative_returns = []
+    current_date = df['date'].iloc[0]
+    position = None
+    unrealized_profit = 0
+    
+    for index, row in df.iterrows():
+        row_date = row['date']
+        while current_date < row_date:
+            cumulative_returns.append({
+                'date': current_date,
+                'cumulative': portfolio_size + unrealized_profit
+            })
+            current_date += timedelta(days=1)
+        
+        if position is None:  # No open position
+            if row['long_entry']:
+                position = {'entry_price': row['close'], 'type': 'long', 'entry_date': row['date'], 'asset': 'BTCUSDT'}
+            elif row['short_entry']:
+                position = {'entry_price': row['close'], 'type': 'short', 'entry_date': row['date'], 'asset': 'BTCUSDT'}
+        else:  # There is an open position
+            if position['type'] == 'long':
+                unrealized_profit = (row['close'] / position['entry_price'] - 1) * portfolio_size
+            elif position['type'] == 'short':
+                unrealized_profit = (position['entry_price'] / row['close'] - 1) * portfolio_size
+
+            if (position['type'] == 'long' and row['long_exit']) or (position['type'] == 'short' and row['short_exit']):
+                exit_price = row['close']
+                trade_return = (exit_price / position['entry_price'] - 1) if position['type'] == 'long' else (position['entry_price'] / exit_price - 1)
+                portfolio_size *= (1 + trade_return)
+                trades.append({
+                    'asset': position['asset'],
+                    'entry_date': position['entry_date'],
+                    'entry_price': position['entry_price'],
+                    'exit_date': row['date'],
+                    'exit_price': exit_price,
+                    'return': trade_return,
+                    'cumulative': portfolio_size,
+                    'type': position['type']
+                })
+                position = None
+                unrealized_profit = 0
+        
+        cumulative_returns.append({
+            'date': row['date'],
+            'cumulative': portfolio_size + unrealized_profit
+        })
+        current_date = row_date + timedelta(days=1)
+    
+    # Fill remaining dates after the last row
+    while current_date <= df['date'].iloc[-1]:
+        cumulative_returns.append({
+            'date': current_date,
+            'cumulative': portfolio_size + unrealized_profit
+        })
+        current_date += timedelta(days=1)
+    
+    return pd.DataFrame(trades), pd.DataFrame(cumulative_returns)
+
+def calculate_drawdowns(cumulative_returns, column='cumulative', drawdown_col='drawdown'):
+    cumulative_returns['peak'] = cumulative_returns[column].cummax()
+    cumulative_returns[drawdown_col] = (cumulative_returns[column] / cumulative_returns['peak']) - 1
+    cumulative_returns['drawdown_duration'] = (cumulative_returns[drawdown_col] < 0).astype(int).groupby((cumulative_returns[drawdown_col] == 0).cumsum()).cumsum()
+    return cumulative_returns
+
+def calculate_metrics(cumulative_returns, benchmark_returns):
+    metrics = {}
+    
+    # Merge the cumulative returns and benchmark returns
+    combined_df = pd.merge(cumulative_returns, benchmark_returns, on='date', how='left')
+    
+    # Fill missing values
+    combined_df['benchmark_cumulative'].fillna(method='ffill', inplace=True)
+    
+    # Calculate daily returns as percentage difference between portfolio values
+    combined_df['strategy_return'] = combined_df['cumulative'].pct_change()
+    combined_df['benchmark_return'] = combined_df['benchmark_cumulative'].pct_change()
+    
+    # Calculate drawdowns and durations for both strategy and benchmark
+    combined_df = calculate_drawdowns(combined_df, column='cumulative', drawdown_col='strategy_drawdown')
+    combined_df = calculate_drawdowns(combined_df, column='benchmark_cumulative', drawdown_col='benchmark_drawdown')
+    
+    # Calculate metrics
+    metrics['Metric'] = ['Strategy', 'Benchmark']
+    metrics['Exposure Time (%)'] = [
+        combined_df['strategy_return'].ne(combined_df['strategy_return'].shift()).mean() * 100,
+        combined_df['benchmark_return'].ne(combined_df['benchmark_return'].shift()).mean() * 100
+    ]
+    metrics['Total Return (%)'] = [
+        (combined_df['cumulative'].iloc[-1] / combined_df['cumulative'].iloc[0] - 1) * 100,
+        (combined_df['benchmark_cumulative'].iloc[-1] / combined_df['benchmark_cumulative'].iloc[0] - 1) * 100
+    ]
+    
+    num_days = (combined_df['date'].iloc[-1] - combined_df['date'].iloc[0]).days
+    metrics['Annualized Return (%)'] = [
+        ((1 + metrics['Total Return (%)'][0] / 100) ** (365 / num_days) - 1) * 100,
+        ((1 + metrics['Total Return (%)'][1] / 100) ** (365 / num_days) - 1) * 100
+    ]
+    metrics['Annualized Volatility (%)'] = [
+        combined_df['strategy_return'].std() * np.sqrt(365) * 100,
+        combined_df['benchmark_return'].std() * np.sqrt(365) * 100
+    ]
+    metrics['Sharpe Ratio'] = [
+        combined_df['strategy_return'].mean() / combined_df['strategy_return'].std() * np.sqrt(365),
+        combined_df['benchmark_return'].mean() / combined_df['benchmark_return'].std() * np.sqrt(365)
+    ]
+    
+    metrics['Max Drawdown (%)'] = [
+        combined_df['strategy_drawdown'].min() * 100,
+        combined_df['benchmark_drawdown'].min() * 100
+    ]
+    
+    metrics['Return to Max DD Ratio'] = [
+        metrics['Total Return (%)'][0] / (abs(metrics['Max Drawdown (%)'][0])),
+        metrics['Total Return (%)'][1] / (abs(metrics['Max Drawdown (%)'][1]))
+    ]
+    
+    return pd.DataFrame(metrics)
+
+def backtest_liquidation(coin):
     num_days = 20
     num_days_lowest_low = 10
-    for coin in coin_list:
-        # Read both CSVs with datetime index
-        df_liquidations = pd.read_csv(f'data/liquidation_data/{coin}-liquidation-data.csv', 
-                                    index_col=0, 
-                                    parse_dates=True)
-        df_candlesticks = pd.read_csv(f'data/candlestick_data/{coin}-candlestick-data.csv', 
-                                     index_col=0, 
-                                     parse_dates=True)
-        
-        # Merge the dataframes on datetime index
-        df_merged = pd.merge(df_liquidations, 
-                           df_candlesticks, 
-                           left_index=True, 
-                           right_index=True, 
-                           how='inner')
-        
-        # Add big_liq column based on 20-day rolling maximum comparison
-        df_merged['big_liq'] = (
-            df_merged['liquidation_usd_amount'] >= 
-            df_merged['liquidation_usd_amount'].rolling(window=num_days, min_periods=1).max()
-        ).astype(int)
-        
-        # Check if current low is the lowest in the previous 20-day window
-        df_merged['lowest_low'] = (
-            df_merged['low'] <= 
-            df_merged['low'].rolling(window=num_days_lowest_low, min_periods=1).min()
-        ).astype(int)
-        
-        # Create signal column where both conditions are met
-        df_merged['signal'] = (df_merged['big_liq'] & df_merged['lowest_low']).astype(int)
-        
-        print(f"\nBig liquidation events for {coin}:")
-        # Print only rows where signal == 1
-        print(df_merged[df_merged['signal'] == 1])
-        
-        # Optionally save the merged data
-        df_merged.to_csv(f'data/merged/{coin}-merged-data.csv')
+    
+    # Read both CSVs with datetime index
+    df_liquidations = pd.read_csv(f'data/liquidation_data/{coin}-liquidation-data.csv')
+    df_candlesticks = pd.read_csv(f'data/candlestick_data/{coin}-candlestick-data.csv')
+    
+    # Merge the dataframes on datetime index
+    df_merged = pd.merge(df_liquidations, 
+                        df_candlesticks, 
+                        left_index=True, 
+                        right_index=True, 
+                        how='inner')
+    
+    # Convert Timestamp index to datetime.datetime format
+    df_merged['date'] = df_merged['timestamp.1'].apply(lambda x: datetime.fromtimestamp(x/1000).strftime('%Y-%m-%d'))
+    df_merged['date'] = pd.to_datetime(df_merged['date'])
+
+    # Add big_liq column based on 20-day rolling maximum comparison
+    df_merged['big_liq'] = (
+        df_merged['liquidation_usd_amount'] >= 
+        df_merged['liquidation_usd_amount'].rolling(window=num_days, min_periods=1).max()
+    ).astype(int)
+    
+    # Check if current low is the lowest in the previous 20-day window
+    df_merged['ll'] = (
+        df_merged['low'] <= 
+        df_merged['low'].rolling(window=num_days_lowest_low, min_periods=1).min()
+    ).astype(int)
+    
+    df_merged['hh'] = (
+        df_merged['high'] >= 
+        df_merged['high'].rolling(window=num_days_lowest_low, min_periods=1).min()
+    ).astype(int)
+
+    # Create signal column where both conditions are met
+    df_merged['long_entry'] = (df_merged['big_liq'] & df_merged['ll']).astype(int)
+    # Never Sell Your Bitcoins
+    df_merged['long_exit'] = (df_merged['hh']).astype(int)
+    df_merged['short_entry'] = False 
+    df_merged['short_exit'] = False 
+
+    print(f"\nBig liquidation events for {coin}:")
+    # Print only rows where signal == 1
+    print(df_merged[df_merged['long_entry'] == 1])
+    print(df_merged[df_merged['long_exit'] == 1])
+    # Optionally save the merged data
+    return df_merged
 
 if __name__ == '__main__':
     os_name = platform.system()
@@ -136,4 +272,21 @@ if __name__ == '__main__':
     elif mode == 1:
         asyncio.run(download_candlestick_data())
     elif mode == 2:
-        backtest_liquidation()
+        for coin in coin_list:
+            df = backtest_liquidation(coin)
+            # Calculate benchmark returns
+            benchmark_returns = calculate_benchmark_returns(df)
+
+            trades_df, cumulative_returns = manage_positions(df)
+            # Calculate metrics
+            metrics = calculate_metrics(cumulative_returns, benchmark_returns)
+
+            # Save trade records
+            backtest_filename = os.path.join("backtest", f"backtest_{coin}.csv")
+            trades_df.to_csv(backtest_filename, index=False)
+            print(f"Saved backtest results for {coin} to {backtest_filename}")
+
+            # Save metrics
+            metrics_filename = os.path.join("backtest", f"metrics_{coin}.csv")
+            metrics.to_csv(metrics_filename, index=False)
+            print(f"Saved metrics for {coin} to {metrics_filename}")
