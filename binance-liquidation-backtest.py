@@ -253,7 +253,7 @@ def backtest_liquidation(coin):
     # Create signal column where both conditions are met
     df_merged['long_entry'] = (df_merged['big_liq'] & df_merged['ll']).astype(int)
     # Never Sell Your Bitcoins
-    df_merged['long_exit'] = (df_merged['hh']).astype(int)
+    df_merged['long_exit'] = (df_merged['big_liq'] & df_merged['hh']).astype(int)
     df_merged['short_entry'] = False 
     df_merged['short_exit'] = False 
 
