@@ -19,7 +19,7 @@
             "type": "debugpy",
             "python":"/Users/kang/opt/anaconda3/envs/sele/bin/python",
             "request": "launch",
-            "program": "${workspaceFolder}/binance-liquidation-backtest.py",
+            "program": "${workspaceFolder}/binance-oi-marketcap-backtest.py",
             "args": ["1"],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -41,6 +41,16 @@
             "request": "launch",
             "program": "${workspaceFolder}/data/process_pkl_csv.py",
             "args": ["1"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Backtest OI Marketcap",
+            "type": "debugpy",
+            "python":"/Users/kang/opt/anaconda3/envs/sele/bin/python",
+            "request": "launch",
+            "program": "${workspaceFolder}/binance-oi-marketcap-backtest.py",
+            "args": ["2"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
