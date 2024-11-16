@@ -225,17 +225,12 @@ def backtest_oi_marketcap(coin):
     
     df_candlesticks = pd.read_csv(f'data/candlestick_data/BTCUSDT-candlestick-data.csv',index_col=0,parse_dates=True)
     df_oi = pd.read_csv(f'data/open_interest_data/BTCUSDT-open_interest-data.csv',index_col=0,parse_dates=True)
-    first_oi = df_oi['open_interest'].iloc[0]
-    df_oi['oi_norm'] = df_oi['open_interest'] / first_oi
-    df_oi['oiratio'] = df_oi['oi_norm'] / df_marketcap['mcap_norm']
-
-    # Calculate rolling 20-day standard deviation of oiratio instead of full period
-    oiratio_std = df_oi['oiratio'].rolling(window=20).std()
-    df_oi['bigoi'] = df_oi['oiratio'] > (df_oi['oiratio'].rolling(window=num_days).mean() + big_oi_threshold * oiratio_std)
+    df_oi['oi_norm'] =  df_oi['open_interest'] / df_oi['open_interest'].shift(1).rolling(window=num_days).mean()
+    df_oi['bigoi'] = df_oi['oi_norm'] > df_oi['oi_norm'].shift(1).rolling(window=20).max()
 
     # Merge the dataframes on datetime index
     df_merged = pd.merge(df_candlesticks, 
-                        df_oi[['oiratio', 'bigoi']], 
+                        df_oi[['bigoi']], 
                         left_index=True, 
                         right_index=True, 
                         how='inner')
