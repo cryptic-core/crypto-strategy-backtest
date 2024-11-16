@@ -34,5 +34,15 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "Process Coinmarketcap To CSV",
+            "type": "debugpy",
+            "python":"C:/Users/kang/anaconda3/envs/bingx/python.exe",
+            "request": "launch",
+            "program": "${workspaceFolder}/data/process_pkl_csv.py",
+            "args": ["1"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
     ]
 }
