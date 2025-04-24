@@ -54,5 +54,33 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "Backtest DCA",
+            "type": "debugpy",
+            "python":"/opt/anaconda3/envs/honmono/bin/python",
+            "request": "launch",
+            "program": "${workspaceFolder}/buy_the_dip_backtest/dca.py",
+        },
+        {
+            "name": "Backtest AHR999",
+            "type": "debugpy",
+            "python":"/opt/anaconda3/envs/honmono/bin/python",
+            "request": "launch",
+            "program": "${workspaceFolder}/buy_the_dip_backtest/ahr999.py",
+        },
+        {
+            "name": "Backtest Fear and Greed",
+            "type": "debugpy",
+            "python":"/opt/anaconda3/envs/honmono/bin/python",
+            "request": "launch",
+            "program": "${workspaceFolder}/buy_the_dip_backtest/fear_and_greed.py",
+        },
+        {
+            "name": "Backtest Liquidation Buy The Dip",
+            "type": "debugpy",
+            "python":"/opt/anaconda3/envs/honmono/bin/python",
+            "request": "launch",
+            "program": "${workspaceFolder}/buy_the_dip_backtest/liquidation.py",
+        },
     ]
 }
